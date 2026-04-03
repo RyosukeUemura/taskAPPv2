@@ -1,0 +1,97 @@
+
+name: mytask-WEBAPP-dashboard
+
+services:
+  nginx:
+    build:
+      context: ./docker/nginx
+      dockerfile: Dockerfile
+    container_name: mytask_nginx
+    ports:
+      - "80:80"
+    depends_on:
+      - php
+      - node
+    volumes:
+      - ./src/php:/var/www/html
+      - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf
+    networks:
+      - mytask_network
+    restart: unless-stopped
+
+  php:
+    build:
+      context: ./docker/php
+      dockerfile: Dockerfile
+    container_name: mytask_php
+    volumes:
+      - ./src/php:/var/www/html
+    depends_on:
+      - mysql
+      - redis
+    environment:
+      - DB_HOST=mysql
+      - DB_PORT=3306
+      - DB_DATABASE=${MYSQL_DATABASE:-mytask_db}
+      - DB_USERNAME=${MYSQL_USER:-mytask_user}
+      - DB_PASSWORD=${MYSQL_PASSWORD:-secret}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    networks:
+      - mytask_network
+    restart: unless-stopped
+
+  node:
+    build:
+      context: ./docker/node
+      dockerfile: Dockerfile
+    container_name: mytask_node
+    volumes:
+      - ./src/node:/app
+      - /app/node_modules
+    environment:
+      - NODE_ENV=development
+      - PORT=3000
+    depends_on:
+      - mysql
+      - redis
+    networks:
+      - mytask_network
+    restart: unless-stopped
+
+  mysql:
+    image: mysql:8.0
+    container_name: mytask_mysql
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-rootsecret}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-mytask_db}
+      MYSQL_USER: ${MYSQL_USER:-mytask_user}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-secret}
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./docker/mysql/init:/docker-entrypoint-initdb.d
+    networks:
+      - mytask_network
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: mytask_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    networks:
+      - mytask_network
+    restart: unless-stopped
+
+volumes:
+  mysql_data:
+  redis_data:
+
+networks:
+  mytask_network:
+    driver: bridge

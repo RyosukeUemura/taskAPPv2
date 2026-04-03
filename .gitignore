@@ -1,0 +1,15 @@
+# 環境変数（パスワードなど）
+.env
+.env.backup
+
+# パッケージ群（容量が大きすぎるため除外）
+node_modules/
+vendor/
+
+# データベースのデータ（Dockerのボリュームなど）
+/mysql-data/
+*.sql
+
+# OSの隠しファイル
+.DS_Store
+Thumbs.db
