@@ -15,6 +15,6 @@ Route::get('/me',      [AuthController::class, 'me']);
 // ── 要認証のルート（auth:sanctum ミドルウェアで保護） ──────────
 // このグループ内のルートはログイン済みでないと 401 が返る
 Route::middleware('auth:sanctum')->group(function () {
-    Route::get('/weather/sapporo', [WeatherController::class, 'sapporo']);
+    Route::get('/weather', [WeatherController::class, 'sapporo']);
     Route::apiResource('tasks', TaskController::class);
 });
