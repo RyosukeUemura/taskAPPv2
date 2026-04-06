@@ -6,11 +6,28 @@ export const useTasks = () => {
   const [tasks, setTasks] = useState<Task[]>([])
 
   // GET: タスク一覧を取得する関数
-  const fetchTasks = () => {
-    authFetch('/api/tasks')
-      .then(res => res.json())
-      .then((data: Task[]) => setTasks(data))
-  }
+const fetchTasks = async () => {
+    try {
+        const res = await authFetch('/api/tasks');
+        
+        // 追加: 正常なレスポンス（200番台）以外は弾く
+        if (!res.ok) {
+            if (res.status === 401) {
+                console.warn("未認証です。タスクをクリアします。");
+                setTasks([]); // クラッシュ防止のために空配列をセット
+                // 必要に応じてここで window.location.href = '/login'; などを実行
+                return;
+            }
+            throw new Error(`エラーが発生しました: ${res.status}`);
+        }
+
+        const data = await res.json();
+        setTasks(data);
+    } catch (error) {
+        console.error("タスク取得エラー:", error);
+        setTasks([]); // ネットワークエラー時などもクラッシュを防ぐ
+    }
+};
 
   useEffect(() => {
     fetchTasks()

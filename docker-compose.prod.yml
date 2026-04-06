@@ -1,0 +1,91 @@
+# ── 本番イメージのローカル動作確認用 ─────────────────────────────────────────
+#
+# 目的：GCPにデプロイする前に、本番用 Dockerfile.prod で正しく動くかを
+#       ローカル環境で確認するための設定ファイル。
+#
+# 起動方法：
+#   docker compose -f docker-compose.prod.yml up --build
+#
+# 確認ポイント：
+#   - http://localhost:8080 でログイン画面が表示されるか
+#   - test@example.com / password でログインできるか
+#   - タスクのCRUDが動作するか
+#
+# 本番と異なる点（ローカルテスト用の妥協）：
+#   - Cloud SQL の代わりにローカル MySQL を使用
+#   - HTTPS は使わず HTTP で確認
+# ─────────────────────────────────────────────────────────────────────────────
+
+name: mytask-prod-test
+
+services:
+
+  # ── 本番アプリ（nginx + php-fpm + React静的ファイルが1コンテナ） ──────────
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.prod   # 本番用Dockerfileを使う（開発用とは別）
+    ports:
+      - "8080:8080"
+    environment:
+      PORT: "8080"
+      APP_NAME: "mytask"
+      APP_ENV: "production"
+      APP_DEBUG: "false"
+      # ⚠️ 本番用APP_KEYは必ず変更すること
+      # 生成方法: docker run --rm php:8.3-alpine php -r "echo base64_encode(random_bytes(32));"
+      APP_KEY: "base64:FpfWPix6KV7f2yeFrFWs6CsRO4NFk0a2fP8gRsu4wE8=%"
+      APP_URL: "http://localhost:8080"
+
+      # データベース（ローカルテスト用）
+      DB_CONNECTION: "mysql"
+      DB_HOST: "mysql"
+      DB_PORT: "3306"
+      DB_DATABASE: "mytask_db"
+      DB_USERNAME: "mytask_user"
+      DB_PASSWORD: "secret"
+
+      # セッション（Cloud Run 複数インスタンス対応のため cookie ドライバーを使用）
+      # cookie: セッションデータを暗号化して Cookie に保存（サーバー側保存なし）
+      SESSION_DRIVER: "cookie"
+      SESSION_DOMAIN: "localhost"
+      SESSION_SECURE_COOKIE: "false"   # ローカルはHTTPなのでfalse（本番はtrue）
+      SANCTUM_STATEFUL_DOMAINS: "localhost,localhost:8080"
+
+      # キャッシュ（ファイルベース：ローカルテストに十分）
+      CACHE_STORE: "file"
+
+      # ログ（標準出力へ）
+      LOG_CHANNEL: "stderr"
+
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - prod_network
+
+  # ── ローカルテスト用 MySQL ────────────────────────────────────────────────
+  # 本番では Cloud SQL に置き換わる
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: "rootsecret"
+      MYSQL_DATABASE: "mytask_db"
+      MYSQL_USER: "mytask_user"
+      MYSQL_PASSWORD: "secret"
+    volumes:
+      - mysql_prod_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-prootsecret"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - prod_network
+
+volumes:
+  mysql_prod_data:
+
+networks:
+  prod_network:
+    driver: bridge

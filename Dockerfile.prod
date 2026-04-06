@@ -1,0 +1,151 @@
+# ════════════════════════════════════════════════════════════════════════════
+# 本番用 Dockerfile（マルチステージビルド）
+#
+# マルチステージビルドとは：
+#   ビルドに必要なツール（Node.js, Composer等）を最終イメージに含めないことで、
+#   セキュリティリスクの低減とイメージサイズの軽量化を同時に実現するテクニック。
+#
+# ステージ構成：
+#   Stage 1 (frontend-builder) : npm run build → React静的ファイル生成
+#   Stage 2 (composer-builder) : composer install → PHPライブラリインストール
+#   Stage 3 (production)       : 上記の成果物だけを取り込んだ最小実行イメージ
+#
+# 使用方法：
+#   docker build -f Dockerfile.prod -t mytask-app .
+# ════════════════════════════════════════════════════════════════════════════
+
+
+# ── Stage 1: React フロントエンドのビルド ────────────────────────────────────
+FROM node:20-alpine AS frontend-builder
+
+WORKDIR /app
+
+# package.json / package-lock.json を先にコピーしてキャッシュを活用する
+# （ソースコードが変わってもpackage.jsonが変わらなければnpm ciを再実行しない）
+COPY src/node/package*.json ./
+RUN npm ci --silent
+
+# ソースコード一式をコピーして本番ビルドを実行
+COPY src/node/ .
+RUN npm run build
+# 出力: /app/dist/index.html, /app/dist/assets/*.js, *.css
+
+
+# ── Stage 2: PHP 依存ライブラリのインストール ────────────────────────────────
+FROM composer:2 AS composer-builder
+
+WORKDIR /app
+
+# composer.json / composer.lock を先にコピーしてキャッシュを活用する
+# Laravel ソースコードを先にコピー（.env は .dockerignore で除外済み）
+COPY src/php/ .
+
+# ── vendor と bootstrap/cache を確実にリセット ────────────────────────────
+# 問題の背景：
+#   COPY src/php/ . でホストの vendor/（dev パッケージを含む）がコピーされる。
+#   .dockerignore で除外しようとしても Docker のレイヤーキャッシュにより
+#   古い vendor が混入するケースがある。
+#
+# 解決策：
+#   1. vendor/ を完全削除してから composer install し直す
+#      → ホスト側の開発 vendor（pail 等）が混入しない
+#   2. bootstrap/cache/*.php も削除
+#      → 開発時にキャッシュされた packages.php が dev パッケージを参照しても無害になる
+RUN rm -rf vendor bootstrap/cache/*.php
+
+# --no-dev:              開発用ライブラリ（PHPUnit/Pail等）を除外
+# --optimize-autoloader: クラスマップを使ったオートローダー最適化（本番向け高速化）
+# --no-scripts:          postinstall スクリプトはここでは実行しない
+#                        （artisan package:discover はDB不要だが、起動時に改めて実行する）
+RUN composer install \
+    --no-dev \
+    --optimize-autoloader \
+    --no-scripts \
+    --no-interaction
+
+
+# ── Stage 3: 本番実行イメージ ────────────────────────────────────────────────
+# Stage1, Stage2 の「成果物だけ」を取り込む。
+# Node.js も Composer も最終イメージには入らない。
+FROM php:8.3-fpm-alpine AS production
+
+# ── システム依存パッケージ ─────────────────────────────────────────────────
+RUN apk add --no-cache \
+    nginx \
+    supervisor \
+    bash \
+    curl \
+    libpng-dev \
+    libjpeg-turbo-dev \
+    libwebp-dev \
+    freetype-dev \
+    libzip-dev \
+    oniguruma-dev \
+    icu-dev \
+    autoconf \
+    g++ \
+    make \
+    gettext
+
+# ── PHP 拡張 ───────────────────────────────────────────────────────────────
+RUN docker-php-ext-configure gd \
+        --with-freetype \
+        --with-jpeg \
+        --with-webp \
+    && docker-php-ext-install -j$(nproc) \
+        pdo \
+        pdo_mysql \
+        mysqli \
+        mbstring \
+        gd \
+        zip \
+        bcmath \
+        intl \
+        opcache
+
+# Redis 拡張（Sanctumセッションのキャッシュ等に将来使えるよう維持）
+RUN pecl install redis \
+    && docker-php-ext-enable redis
+
+# ── PHP OPcache の本番最適化設定 ──────────────────────────────────────────
+RUN echo "opcache.enable=1"                  >> /usr/local/etc/php/conf.d/opcache.ini \
+ && echo "opcache.memory_consumption=128"    >> /usr/local/etc/php/conf.d/opcache.ini \
+ && echo "opcache.max_accelerated_files=10000" >> /usr/local/etc/php/conf.d/opcache.ini \
+ && echo "opcache.validate_timestamps=0"     >> /usr/local/etc/php/conf.d/opcache.ini
+
+WORKDIR /var/www/html
+
+# ── Stage2 の Laravel ソース（vendor/ 含む）をコピー ──────────────────────
+COPY --from=composer-builder /app /var/www/html
+
+# ── 開発時のキャッシュを除去してクリーンな状態にする ─────────────────────
+# bootstrap/cache/ は .dockerignore で除外済みだが、
+# composer-builder でコピーされた場合に備えて確実に削除する。
+# （開発時にキャッシュされた packages.php に laravel/pail 等の dev パッケージが
+#   残っていると、--no-dev インストール後にクラスが見つからずに起動失敗する）
+RUN mkdir -p bootstrap/cache && rm -f bootstrap/cache/*.php
+
+# ── Stage1 の React ビルド成果物を Laravel の public/ に配置 ──────────────
+# Nginx は /var/www/html/public/ をドキュメントルートとして使う。
+# index.html（React）と index.php（Laravel）がここに共存する。
+COPY --from=frontend-builder /app/dist /var/www/html/public
+
+# ── 本番用設定ファイル群をコピー ─────────────────────────────────────────
+# nginx.conf は .template として保存（start.sh で PORT を置換して使う）
+COPY docker/production/nginx.conf        /etc/nginx/nginx.conf.template
+COPY docker/production/supervisord.conf  /etc/supervisord.conf
+COPY docker/production/start.sh          /start.sh
+RUN chmod +x /start.sh
+
+# ── ストレージ・キャッシュディレクトリの権限設定 ─────────────────────────
+RUN mkdir -p storage/logs storage/framework/{cache,sessions,views} bootstrap/cache \
+    && chown -R www-data:www-data storage bootstrap/cache \
+    && chmod -R 775 storage bootstrap/cache
+
+# ── Cloud Run のデフォルトポート ──────────────────────────────────────────
+# Cloud Run は環境変数 PORT を自動でセットするが、デフォルト値として 8080 を設定
+ENV PORT=8080
+EXPOSE 8080
+
+# コンテナ起動時に実行するスクリプト
+CMD ["/start.sh"]

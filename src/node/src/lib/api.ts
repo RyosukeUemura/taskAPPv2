@@ -21,6 +21,7 @@ export const authFetch = (url: string, options: RequestInit = {}): Promise<Respo
     credentials: 'include', // セッションCookieを送受信する
     headers: {
       'Content-Type': 'application/json',
+      'Accept': 'application/json',   // LaravelにJSONレスポンスを強制（HTMLエラーを防ぐ）
       'X-XSRF-TOKEN': getCsrfToken(), // CSRFトークンをヘッダーに付与
       ...(options.headers ?? {}),     // 呼び出し元からの追加ヘッダーをマージ
     },

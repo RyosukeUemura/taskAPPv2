@@ -1,0 +1,31 @@
+# ── 機密ファイル（絶対にイメージに含めない） ──────────────────
+src/php/.env
+src/php/.env.*
+!src/php/.env.example
+
+# ── 開発用ファイル ─────────────────────────────────────────────
+src/node/node_modules/
+src/node/dist/              # ビルド成果物はDockerfile内でビルドし直す
+
+src/php/vendor/             # composer-builderステージでインストールし直す
+src/php/bootstrap/cache/    # 開発時のキャッシュ（packages.php等）を除外：本番ビルド時に再生成する
+
+# ── Git・エディタ設定 ──────────────────────────────────────────
+.git/
+.gitignore
+.vscode/
+.idea/
+
+# ── Docker設定（再帰的には含めない） ──────────────────────────
+docker-compose.yml
+docker-compose.prod.yml
+
+# ── テスト・CI ─────────────────────────────────────────────────
+src/php/tests/
+src/php/phpunit.xml
+
+# ── ログ・一時ファイル ────────────────────────────────────────
+src/php/storage/logs/
+src/php/storage/framework/cache/
+src/php/storage/framework/sessions/
+src/php/storage/framework/views/

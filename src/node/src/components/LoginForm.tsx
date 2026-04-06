@@ -2,9 +2,10 @@ import React, { useState } from 'react'
 
 type Props = {
   onLogin: (email: string, password: string) => Promise<string | null>
+  onSwitchToRegister: () => void
 }
 
-export const LoginForm: React.FC<Props> = ({ onLogin }) => {
+export const LoginForm: React.FC<Props> = ({ onLogin, onSwitchToRegister }) => {
   const [email, setEmail]       = useState('')
   const [password, setPassword] = useState('')
   const [error, setError]       = useState<string | null>(null)
@@ -77,12 +78,16 @@ export const LoginForm: React.FC<Props> = ({ onLogin }) => {
           </button>
         </form>
 
-        {/* テスト用アカウント案内 */}
-        <div className="mt-5 p-3 bg-gray-50 rounded-lg text-xs text-gray-400 text-center">
-          <p className="font-medium text-gray-500 mb-1">テスト用アカウント</p>
-          <p>test@example.com</p>
-          <p>password</p>
-        </div>
+        {/* 新規登録リンク */}
+        <p className="mt-5 text-center text-sm text-gray-400">
+          アカウントをお持ちでない方は{' '}
+          <button
+            onClick={onSwitchToRegister}
+            className="text-blue-500 hover:underline"
+          >
+            新規登録はこちら
+          </button>
+        </p>
       </div>
     </div>
   )

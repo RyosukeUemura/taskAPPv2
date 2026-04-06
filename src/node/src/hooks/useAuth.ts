@@ -51,11 +51,46 @@ export const useAuth = () => {
     return null        // null = エラーなし
   }
 
+  // ── 新規登録処理 ─────────────────────────────────────────────
+  // CSRFトークン取得 → /api/register POST → 自動ログイン
+  const register = async (
+    name: string,
+    email: string,
+    password: string,
+    passwordConfirmation: string,
+  ): Promise<string | null> => {
+    await fetch('/sanctum/csrf-cookie', { credentials: 'include' })
+
+    const res = await authFetch('/api/register', {
+      method: 'POST',
+      body: JSON.stringify({
+        name,
+        email,
+        password,
+        password_confirmation: passwordConfirmation,
+      }),
+    })
+
+    if (!res.ok) {
+      const err = await res.json()
+      // Laravel バリデーションエラーは errors オブジェクトを返す
+      if (err.errors) {
+        const first = Object.values(err.errors as Record<string, string[]>)[0]
+        return Array.isArray(first) ? first[0] : '登録に失敗しました'
+      }
+      return err.message ?? '登録に失敗しました'
+    }
+
+    const userData: AuthUser = await res.json()
+    setUser(userData)
+    return null
+  }
+
   // ── ログアウト処理 ───────────────────────────────────────────
   const logout = async () => {
     await authFetch('/api/logout', { method: 'POST' })
     setUser(null) // stateをクリアするとLoginFormが表示される
   }
 
-  return { user, isLoading, login, logout }
+  return { user, isLoading, login, logout, register }
 }
