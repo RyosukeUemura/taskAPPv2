@@ -1,0 +1,85 @@
+name: Deploy to Cloud Run
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  id-token: write   # Workload Identity Federation に必須
+
+jobs:
+  deploy:
+    name: Build & Deploy
+    runs-on: ubuntu-latest
+
+    env:
+      PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      REGION: ${{ vars.GCP_REGION }}
+      SERVICE: ${{ vars.CLOUD_RUN_SERVICE }}
+      ARTIFACT_REPO: ${{ vars.ARTIFACT_REPO }}
+
+    steps:
+      # ── 1. ソースコードの取得 ───────────────────────────────────────────────
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── 2. GCP 認証（Workload Identity Federation） ─────────────────────────
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.WIF_SERVICE_ACCOUNT }}
+
+      # ── 3. Docker の認証設定（Artifact Registry へのプッシュ用） ─────────────
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
+
+      # ── 4. Docker イメージのビルド & プッシュ ──────────────────────────────
+      - name: Build and push Docker image
+        run: |
+          IMAGE="${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.ARTIFACT_REPO }}/${{ env.SERVICE }}"
+          TAG="${IMAGE}:${{ github.sha }}"
+          LATEST="${IMAGE}:latest"
+
+          docker build \
+            -f Dockerfile.prod \
+            -t "${TAG}" \
+            -t "${LATEST}" \
+            .
+
+          docker push "${TAG}"
+          docker push "${LATEST}"
+
+          # 後続ステップで使えるよう出力
+          echo "image=${TAG}" >> "${GITHUB_OUTPUT}"
+        id: build
+
+      # ── 5. Cloud Run へデプロイ ─────────────────────────────────────────────
+      - name: Deploy to Cloud Run
+        id: deploy
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: ${{ env.SERVICE }}
+          region: ${{ env.REGION }}
+          image: ${{ steps.build.outputs.image }}
+          flags: |
+            --allow-unauthenticated
+            --port=8080
+            --memory=512Mi
+            --cpu=1
+            --min-instances=0
+            --max-instances=3
+            --add-cloudsql-instances=taskappv2-492314:asia-northeast1:taskapp-instance
+            --set-env-vars=APP_ENV=production,APP_DEBUG=false,LOG_CHANNEL=stderr,SESSION_DRIVER=database,CACHE_STORE=file,DB_SOCKET=/cloudsql/taskappv2-492314:asia-northeast1:taskapp-instance
+          secrets: |
+            APP_KEY=APP_KEY:latest
+            DB_DATABASE=DB_DATABASE:latest
+            DB_USERNAME=DB_USERNAME:latest
+            DB_PASSWORD=DB_PASSWORD:latest
+
+      # ── 6. デプロイ結果の表示 ──────────────────────────────────────────────
+      - name: Show service URL
+        run: echo "Deployed to ${{ steps.deploy.outputs.url }}"
