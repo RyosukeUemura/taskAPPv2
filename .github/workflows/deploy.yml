@@ -15,10 +15,10 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
-      REGION: ${{ vars.GCP_REGION }}
-      SERVICE: ${{ vars.CLOUD_RUN_SERVICE }}
-      ARTIFACT_REPO: ${{ vars.ARTIFACT_REPO }}
+      PROJECT_ID: taskappv2-492314
+      REGION: asia-northeast1
+      SERVICE: mytask-app
+      ARTIFACT_REPO: mytask-repo
 
     steps:
       # ── 1. ソースコードの取得 ───────────────────────────────────────────────
@@ -30,8 +30,8 @@ jobs:
         id: auth
         uses: google-github-actions/auth@v2
         with:
-          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
-          service_account: ${{ vars.WIF_SERVICE_ACCOUNT }}
+          workload_identity_provider: projects/736336389839/locations/global/workloadIdentityPools/github-actions-pool/providers/github-actions-provider
+          service_account: github-actions-sa@taskappv2-492314.iam.gserviceaccount.com
 
       # ── 3. Docker の認証設定（Artifact Registry へのプッシュ用） ─────────────
       - name: Configure Docker for Artifact Registry
@@ -71,14 +71,12 @@ jobs:
             --memory=512Mi
             --cpu=1
             --min-instances=0
-            --max-instances=3
+            --max-instances=10
             --add-cloudsql-instances=taskappv2-492314:asia-northeast1:taskapp-instance
-            --set-env-vars=APP_ENV=production,APP_DEBUG=false,LOG_CHANNEL=stderr,SESSION_DRIVER=database,CACHE_STORE=file,DB_SOCKET=/cloudsql/taskappv2-492314:asia-northeast1:taskapp-instance
+            --set-env-vars=APP_ENV=production,APP_DEBUG=false,LOG_CHANNEL=stderr,SESSION_DRIVER=database,SESSION_SECURE_COOKIE=true,CACHE_STORE=file,DB_CONNECTION=mysql,DB_SOCKET=/cloudsql/taskappv2-492314:asia-northeast1:taskapp-instance,DB_DATABASE=taskapp_db,DB_USERNAME=root,APP_URL=https://mytask-app-3ifaraxphq-an.a.run.app,SANCTUM_STATEFUL_DOMAINS=mytask-app-3ifaraxphq-an.a.run.app
           secrets: |
-            APP_KEY=APP_KEY:latest
-            DB_DATABASE=DB_DATABASE:latest
-            DB_USERNAME=DB_USERNAME:latest
-            DB_PASSWORD=DB_PASSWORD:latest
+            APP_KEY=taskapp-app-key:latest
+            DB_PASSWORD=taskapp-db-password:latest
 
       # ── 6. デプロイ結果の表示 ──────────────────────────────────────────────
       - name: Show service URL
