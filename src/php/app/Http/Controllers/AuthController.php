@@ -44,9 +44,15 @@ class AuthController extends Controller
     }
 
     // GET /api/me
-    // 現在ログイン中のユーザー情報を返す（未ログインの場合は null）
+    // 現在ログイン中のユーザー情報を返す（未ログインの場合は 401）
     public function me(Request $request)
     {
-        return response()->json($request->user());
+        $user = $request->user();
+
+        if (! $user) {
+            return response()->json(['message' => 'Unauthenticated.'], 401);
+        }
+
+        return response()->json($user);
     }
 }

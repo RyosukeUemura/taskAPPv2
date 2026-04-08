@@ -20,8 +20,16 @@ export const useAuth = () => {
   useEffect(() => {
     authFetch('/api/me')
       .then(res => (res.ok ? res.json() : null))
-      .then((data: AuthUser | null) => {
-        setUser(data)
+      .then((data: unknown) => {
+        // id・email を持つオブジェクトのみ有効なユーザーとして扱う
+        // （未ログイン時の {} や null を弾くための二重防御）
+        const isValidUser = (
+          data !== null &&
+          typeof data === 'object' &&
+          'id' in data &&
+          'email' in data
+        )
+        setUser(isValidUser ? (data as AuthUser) : null)
         setIsLoading(false)
       })
       .catch(() => setIsLoading(false))

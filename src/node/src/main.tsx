@@ -1,46 +1,112 @@
-import { StrictMode, useState } from 'react'
+import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
+import {
+  BrowserRouter,
+  Routes,
+  Route,
+  Navigate,
+  useNavigate,
+} from 'react-router-dom'
 import './index.css'
 import App from './App.tsx'
 import { LoginForm }    from './components/LoginForm.tsx'
 import { RegisterForm } from './components/RegisterForm.tsx'
-import { useAuth }      from './hooks/useAuth.ts'
+import { useAuth, AuthUser } from './hooks/useAuth.ts'
 
-// ── ルートコンポーネント ──────────────────────────────────────────
-// 認証状態に応じて「ログイン」「新規登録」「ダッシュボード」を切り替える
+// ── ローディング画面 ──────────────────────────────────────────────────────
+function LoadingScreen() {
+  return (
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <p className="text-gray-400">読み込み中...</p>
+    </div>
+  )
+}
+
+// ── /login ページ ─────────────────────────────────────────────────────────
+// useNavigate は BrowserRouter 内でのみ使えるため、専用ラッパーで切り出す
+type LoginPageProps = {
+  onLogin: (email: string, password: string) => Promise<string | null>
+}
+function LoginPage({ onLogin }: LoginPageProps) {
+  const navigate = useNavigate()
+  return (
+    <LoginForm
+      onLogin={onLogin}
+      onSwitchToRegister={() => navigate('/register')}
+    />
+  )
+}
+
+// ── /register ページ ──────────────────────────────────────────────────────
+type RegisterPageProps = {
+  onRegister: (
+    name: string,
+    email: string,
+    password: string,
+    passwordConfirmation: string,
+  ) => Promise<string | null>
+}
+function RegisterPage({ onRegister }: RegisterPageProps) {
+  const navigate = useNavigate()
+  return (
+    <RegisterForm
+      onRegister={onRegister}
+      onSwitchToLogin={() => navigate('/login')}
+    />
+  )
+}
+
+// ── ルートコンポーネント ──────────────────────────────────────────────────
 function Root() {
   const { user, isLoading, login, logout, register } = useAuth()
-  const [showRegister, setShowRegister] = useState(false)
 
-  // 初期チェック中（/api/me の応答待ち）はローディング表示
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <p className="text-gray-400">読み込み中...</p>
-      </div>
-    )
-  }
+  // /api/me の応答待ち中はルーティング前にローディングを返す
+  // （ここで BrowserRouter に入る前に返すことで /dashboard への誤リダイレクトを防ぐ）
+  if (isLoading) return <LoadingScreen />
 
-  // 未ログイン：新規登録 or ログイン画面を表示
-  if (!user) {
-    if (showRegister) {
-      return (
-        <RegisterForm
-          onRegister={register}
-          onSwitchToLogin={() => setShowRegister(false)}
+  return (
+    <BrowserRouter>
+      <Routes>
+
+        {/* / → /login へリダイレクト（常に） */}
+        <Route path="/" element={<Navigate to="/login" replace />} />
+
+        {/* ログイン画面：ログイン済みなら /dashboard へ */}
+        <Route
+          path="/login"
+          element={
+            user
+              ? <Navigate to="/dashboard" replace />
+              : <LoginPage onLogin={login} />
+          }
         />
-      )
-    }
-    return (
-      <LoginForm
-        onLogin={login}
-        onSwitchToRegister={() => setShowRegister(true)}
-      />
-    )
-  }
 
-  // ログイン済みならダッシュボードを表示
-  return <App user={user} onLogout={logout} />
+        {/* 新規登録画面：ログイン済みなら /dashboard へ */}
+        <Route
+          path="/register"
+          element={
+            user
+              ? <Navigate to="/dashboard" replace />
+              : <RegisterPage onRegister={register} />
+          }
+        />
+
+        {/* ダッシュボード：未ログインなら /login へ */}
+        <Route
+          path="/dashboard"
+          element={
+            user
+              ? <App user={user as AuthUser} onLogout={logout} />
+              : <Navigate to="/login" replace />
+          }
+        />
+
+        {/* 未定義ルートはすべて /login へ */}
+        <Route path="*" element={<Navigate to="/login" replace />} />
+
+      </Routes>
+    </BrowserRouter>
+  )
 }
 
 createRoot(document.getElementById('root')!).render(
