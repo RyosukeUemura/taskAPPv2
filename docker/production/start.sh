@@ -4,7 +4,7 @@
 # Cloud Run がコンテナを起動するたびにこのスクリプトが実行される。
 # 順番が重要：Laravel の初期化 → Nginx 設定の生成 → supervisord 起動
 # ─────────────────────────────────────────────────────────────────────────────
-set -e  # エラー発生時に即座に終了
+set -e  # エラー発生時に即座に終了（artisan コマンドには || true を付けて nginx を確実に起動）
 
 echo "=== 🚀 Starting mytask-app ==="
 echo "PORT=${PORT:-8080}"
@@ -31,14 +31,12 @@ chmod -R 775 storage bootstrap/cache
 # 本番環境では config:cache で設定値をキャッシュすることでパフォーマンス向上。
 # 環境変数から設定を読むため、Cloud Run の環境変数が必要。
 echo "--- Caching Laravel config..."
-php artisan config:cache --no-interaction
+php artisan config:cache --no-interaction || { echo "WARNING: config:cache failed. Continuing without cache."; }
 
 echo "--- Caching Laravel routes..."
-php artisan route:cache --no-interaction
+php artisan route:cache --no-interaction || { echo "WARNING: route:cache failed. Continuing without cache."; }
 
 echo "--- Caching Laravel views..."
-# このアプリは React SPA のため Blade ビューが存在しない。
-# view:cache はビューがない場合にエラーを返すので || true でスキップする。
 php artisan view:cache --no-interaction 2>/dev/null || echo "No Blade views to cache. Skipped."
 
 # ── [4] データベースマイグレーション ─────────────────────────────────────────
@@ -66,7 +64,7 @@ else
 fi
 
 echo "--- Running database migrations..."
-php artisan migrate --force --no-interaction
+php artisan migrate --force --no-interaction || { echo "WARNING: migrate failed. Check DB connection. Continuing to start nginx."; }
 
 echo "=== ✅ Initialization complete. Starting services... ==="
 
