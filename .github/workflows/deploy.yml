@@ -73,7 +73,20 @@ jobs:
             --min-instances=0
             --max-instances=10
             --add-cloudsql-instances=taskappv2-492314:asia-northeast1:taskapp-instance
-            --set-env-vars=APP_ENV=production,APP_DEBUG=false,LOG_CHANNEL=stderr,SESSION_DRIVER=database,SESSION_SECURE_COOKIE=true,CACHE_STORE=file,DB_CONNECTION=mysql,DB_SOCKET=/cloudsql/taskappv2-492314:asia-northeast1:taskapp-instance,DB_DATABASE=taskapp_db,DB_USERNAME=root,APP_URL=https://r-uemura-taskapp.com,SANCTUM_STATEFUL_DOMAINS=r-uemura-taskapp.com,mytask-app-3ifaraxphq-an.a.run.app
+          # env_vars を使うことでカンマ含む値も安全に渡せる（--set-env-vars は , を区切り文字と解釈するため不適）
+          env_vars: |
+            APP_ENV=production
+            APP_DEBUG=false
+            LOG_CHANNEL=stderr
+            SESSION_DRIVER=database
+            SESSION_SECURE_COOKIE=true
+            CACHE_STORE=file
+            DB_CONNECTION=mysql
+            DB_SOCKET=/cloudsql/taskappv2-492314:asia-northeast1:taskapp-instance
+            DB_DATABASE=taskapp_db
+            DB_USERNAME=root
+            APP_URL=https://r-uemura-taskapp.com
+            SANCTUM_STATEFUL_DOMAINS=r-uemura-taskapp.com,mytask-app-3ifaraxphq-an.a.run.app
           secrets: |
             APP_KEY=taskapp-app-key:latest
             DB_PASSWORD=taskapp-db-password:latest
